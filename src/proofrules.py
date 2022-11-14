@@ -29,6 +29,15 @@ impLeftRule = Rule(
     '->L'
 )
 
+impLeftAffRule = Rule(
+    [
+        parse('|- P true'),
+        parse('Q true |- A aff R')
+    ],
+    parse('P -> Q true |- A aff R'),
+    '->L'
+)
+
 forallRightRule = Rule(
     [parse('|- P(y)')],
     parse('|- @x . P(x)'),
