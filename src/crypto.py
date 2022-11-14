@@ -568,11 +568,6 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 	for cert in req.certs:
 		if not verify_cert(cert, cert_chain, roots):
 			return None
-		cert_path = f'certs/{cert.agent.id[1:]}.cert'
-		if not os.path.exists(cert_path):
-			with open(cert_path, 'w') as f:
-				f.write(cert.serialize())
-
 	# Then verify the signatures on each of the credentials
 	for cred in req.creds:
 		if not cred.verify_signature():
@@ -584,8 +579,9 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 		Proposition(parse('ca(#ca)')),
 		Proposition(parse(f'iskey(#ca, {fingerprint(Certificate.load_certificate(Agent("#ca")).public_key)})'))
 	]
-	gamma += [Proposition(cert.cred.sign_formula()) for cert in req.certs]
-	gamma += [Proposition(cred.sign_formula()) for cred in req.creds]
+	cert_chain |= {Agent('#ca'): ca_cert}
+	gamma += [Proposition(cert.cred.sign_formula(cert_chain[cert.cred.signator])) for cert in req.certs]
+	gamma += [Proposition(cred.sign_formula(cert_chain[cred.signator])) for cred in req.creds]
 
 	# Reformulate the proof using only this context
 	pf = rebase_proof(req.proof, gamma)
