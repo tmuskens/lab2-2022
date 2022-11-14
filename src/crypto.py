@@ -131,14 +131,16 @@ class Credential():
 			return False
 		return True
 
-	def sign_formula(self) -> Formula:
+	def sign_formula(self, cert: Certificate=None) -> Formula:
 		"""
 		Produces a representation of the credential as a `sign` formula.
 		
 		Returns:
-		    Formula: A formula `sign(self.p, [sk_self.signator])`.
+			Formula: A formula `sign(self.p, [sk_self.signator])`.
 		"""
-		key = fingerprint(Certificate.load_certificate(self.signator).public_key)
+		if cert is None:
+			cert = Certificate.load_certificate(self.signator)
+		key = fingerprint(cert.public_key)
 		return parse(f'sign({stringify(self.p)}, {key})')
 
 	def __str__(self):
