@@ -527,11 +527,19 @@ def rebase_proof(pf: Proof|Sequent, gamma: list[Judgement]) -> Proof:
 	    TypeError: The `pf` argument must either be a `Proof` or `Sequent`.
 	"""
 	if isinstance(pf, Proof):
+		conc = rebase_proof(pf.conclusion, gamma) # Sequent(gamma, pf.conclusion.delta)
 		prems = [rebase_proof(prem, gamma) for prem in pf.premises]
-		conc = Sequent(gamma, pf.conclusion.delta)
 		return Proof(prems, conc, pf.rule)
 	elif isinstance(pf, Sequent):
-		return Sequent(gamma, pf.delta)
+		new_gamma = []
+		for p in pf.gamma:
+			match p.p:
+				case App(Operator.SIGN, n, a):
+					new_gamma += [p] if p in gamma else []
+				case _:
+					new_gamma += [p]
+		new_gamma = list(set(new_gamma) | set(gamma))
+		return Sequent(new_gamma, pf.delta)
 
 	raise TypeError(f'rebase_proof expects either Proof or Sequent, got {type(pf)}')
 
@@ -567,7 +575,11 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 
 	# Now check the proof
 	# First construct the sequent context from the credentials and certificates
-	gamma = [Proposition(cert.cred.sign_formula()) for cert in req.certs]
+	gamma = [
+		Proposition(parse('ca(#ca)')),
+		Proposition(parse(f'iskey(#ca, {fingerprint(Certificate.load_certificate(Agent("#ca")).public_key)})'))
+	]
+	gamma += [Proposition(cert.cred.sign_formula()) for cert in req.certs]
 	gamma += [Proposition(cred.sign_formula()) for cred in req.creds]
 
 	# Reformulate the proof using only this context

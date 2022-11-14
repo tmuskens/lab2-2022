@@ -9,7 +9,8 @@ from proofrules import *
 def verify_leftforall(pf: Proof) -> bool:
     if not pf.rule.name == '@L' or len(pf.premises) != 1:
         return False
-    prems = list(set(pf.conclusion.gamma) ^ set(pf.premises[0].gamma))
+    gamma = pf.premises[0].gamma if isinstance(pf.premises[0], Sequent) else pf.premises[0].conclusion.gamma
+    prems = list(set(pf.conclusion.gamma) ^ set(gamma))
     if len(prems) != 2:
         return False
     eq = (prems[0].p, prems[1].p) if prems[0] in pf.conclusion.gamma else (prems[1].p, prems[0].p)
@@ -19,7 +20,6 @@ def verify_leftforall(pf: Proof) -> bool:
         return False
     if apply_formula(eq[0].p, {x: rho[x]}) != eq[1]:
         return False
-
     return True
 
 def verify_step(pf: Proof) -> bool:
@@ -36,7 +36,7 @@ def verify_step(pf: Proof) -> bool:
                     matchs_sequent(pf.rule.premises[i], premises[i], rho) for rho in rhos
                 )
             rhos = list(rhos)
-            for rho in rhos:
+            for i, rho in enumerate(rhos):
                 match pf.rule:
                     case Rule(_, _, '@R'):
                         x = Variable('y')
@@ -44,6 +44,17 @@ def verify_step(pf: Proof) -> bool:
                         if rho[x] in context_vars:
                             continue
                         elif not isinstance(rho[x], Variable):
+                            continue
+                    case _:
+                        prems_good = True
+                        for rule_prem, step_prem in zip(pf.rule.premises, pf.premises):
+                            new_assumes = set([apply_judgement(p, rho) for p in rule_prem.gamma])
+                            gamma = step_prem.gamma if isinstance(step_prem, Sequent) else step_prem.conclusion.gamma
+                            if not all(p in gamma for p in new_assumes):
+                                prems_good = False
+                            if not all(p in (new_assumes | set(pf.conclusion.gamma)) for p in gamma):
+                                prems_good = False
+                        if not prems_good:
                             continue
                 return True
             return False
@@ -63,9 +74,9 @@ def verify(pf: Proof) -> list[Sequent]:
     """
     if isinstance(pf, Sequent):
         return [pf]
-    obs = [premise for premise in pf.premises if isinstance(premise, Sequent)]
-    if len(obs) > 0 and not verify_step(pf):
+    if not verify_step(pf):
         return [pf.conclusion]
+    obs = [premise for premise in pf.premises if isinstance(premise, Sequent)]
     for premise in [premise for premise in pf.premises if isinstance(premise, Proof)]:
         obs += verify(premise)
     return obs

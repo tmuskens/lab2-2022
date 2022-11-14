@@ -178,12 +178,13 @@ def is_ca_key(k: Key, seq: Sequent, ca: Optional[Agent]=None) -> bool:
         bool: `True` if the context of `seq` contains `iskey(A, k)` for some
             agent `A` for which the context also contains `ca(A)`.
     """
+def is_ca_key(k: Key, seq: Sequent, ca: Optional[Agent]=None):
     for p in seq.gamma:
         match p:
             case Proposition(App(Operator.ISKEY, _, [ag, pk])):
                 if ca is None:
                     return Proposition(App(Operator.ISCA, 1, [ag])) in seq.gamma
-                elif ag == ca:
+                elif ag == ca and pk == k:
                     return True
 
     return False
