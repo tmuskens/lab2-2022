@@ -4,6 +4,7 @@ from dataclasses import dataclass, is_dataclass, asdict
 from glob import glob
 import hashlib
 import json
+import os
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 	Ed25519PrivateKey,
@@ -567,6 +568,10 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 	for cert in req.certs:
 		if not verify_cert(cert, cert_chain, roots):
 			return None
+		cert_path = f'certs/{cert.agent.id[1:]}.cert'
+		if not os.path.exists(cert_path):
+			with open(cert_path, 'w') as f:
+				f.write(cert.serialize())
 
 	# Then verify the signatures on each of the credentials
 	for cred in req.creds:
