@@ -19,6 +19,32 @@ You should then copy your private key into the `private_key` directory of this r
 ```
 scp <id>@linux.andrew.cmu.edu:/afs/andrew.cmu.edu/usr21/jrduvall/15316-f22/<id>/<id>.pem private_keys
 ```
+Before testing your solution, you might consider removing superfluous credentials and certificates that you will not need to complete the goals. This will speed up certain operations performed by the starter code.
+
+In the `certs` directory, you only need the following files (assuming `<id>` is your Andrew ID).
+```
+<id>.cert
+aditi.cert
+ca.cert
+jack.cert
+mfredrik.cert
+nuno.cert
+root.cert
+```
+In the `credentials` directory, you only need the following.
+```
+<id>_secret.cred
+<id>_shared.cred
+<id>_txt.cred
+aditi_secret.cred
+jack_secret.cred
+mfredrik_secret.cred
+mfredrik_shared.cred
+mfredrik_txt.cred
+nuno_secret.cred
+policy1.cred
+policy2.cred
+```
 
 ## Implementing an authorization prover
 
@@ -287,7 +313,11 @@ t = RepeatTactic(
         ])
     )
 ```
-This is sufficient to prove basic implication chains, giving results like the following.
+This is sufficient to prove basic implication chains. When we run the following:
+```
+print(stringify(t.apply(parse('P, P -> Q, Q -> R |- R'))))
+```
+The result is the following proof:
 ```
                           T.0  T.1
 ->L ---------------------------------------------------
@@ -312,6 +342,53 @@ Your task is to implement `prove` in `prover.py` to address these shortcomings. 
 * When thinking about how to handle the delegation policies, consider working backwards through delegation credentials in a goal-oriented fashion. Although it may be tempting to write a tactic that deals with universal quantifiers in a very general way, this approach can be difficult to scale.
 * Part of your grade will be calculated by the number of unnecessary credentials and certificates that your authorization requests contain: your proof should not rely on credentials that are not actually needed to make a successful authorization. You should consider this when designing tactics that deal with `sign(...)` formulas: they could all be converted to `says` formulas eagerly before doing anything else, but this would mean that your proof would always rely on *every* certificate and credential provided in the context. It is better to consider tactics that only make use of `sign` formulas when they are needed to make progress handling the delegation policy.
 * Study the starter tactics and their comments if you are unsure how to begin. It's fine to start small: write tactics that emulate the steps that you would take to complete a proof by hand, and test them early. Use these tactics as building blocks to handle more complex formulas, until you are able to complete the authorization requests described in the previous section.
+
+#### Tip: don't forget about `Cut`
+
+In lecture we mentioned that the authorization logic does not need the `Cut` rule: any proof that uses `Cut` can be rewritten without it. However, your tactics are free to produce proofs that use `Cut`, and you may find that it is more straightforward to use `Cut` when the `Sign` and `Cert` rules are needed than otherwise. Consider the following sequent, which we will refer to as `seq1`.
+```
+ca(#ca),
+iskey(#ca, [k1]),
+sign(iskey(#a, [k2]), [k1]),
+sign(iskey(#b, [k3]), [k1]),
+sign((#a says open(#c, <r>)) -> open(#c, <r>), [k3])
+sign(open(#c, <r>), [k2])
+    |- #b says open(#c, <r>)
+```
+A proof for this needs to accomplish the following.
+
+1. "Unwrap" the certificates `sign(iskey(#a, [k2]), [k1])` and `sign(iskey(#b, [k3]), [k1])` to establish that `[k2]` belongs to `#a` and `[k3]` belongs to `#b`. Doing so entails obtaining `#ca says iskey(#a, [k2])` and `#ca says iskey(#b, [k3])` using the `Sign` rule.
+2. Obtain `#b says ((#a says open(#c, <r>)) -> open(#c, <r>))` and `#a says open(#c, r)`.
+3. Make use of the previous two formulas to get `#b says open(#c, <r>)`.
+
+The rules that are needed for (1) are `Cert` and `Sign`. The `Cert` rule applies when we have an `iskey(A, [k])` judgement on the right of the sequent. Likewise, `Sign` applies when we have `A says P` judgements on the right. This is true in our case, as we are trying to prove `#b says open(#c, <r>)`, but we also want to obtain `#a says open(#c, <r>)` from the formula signed by `[k2]`, and in any event, we can't use `Sign` directly to obtain `#b says open(#c, <r>)` because `#b` did not directly sign `open(#c, <r>)`.
+
+The way to deal with this is to use `Cut` to formulate each goal that we need (and are able to prove from the existing assumptions), so that they become available in our assumptions for the rest of the proof. We could start by proving `#ca says iskey(#a, [k2])`.
+```
+p1 = Proof([p2, p3], parse('iskey(#ca, [k1]), sign(iskey(#a, [k2]), [k1]) |- #ca says iskey(#a, [k2])'), signRule)
+```
+The two premises of this proof themselves are proofs, which just apply the identity rule to show `iskey(#ca, [k1])` and `sign(iskey(#a, [k2]), [k1])`, respectively.
+```
+p2 = Proof([], parse('iskey(#ca, [k1]) |- iskey(#ca, [k1])'), identityRule)
+p3 = Proof([], parse('sign(iskey(#a, [k2]), [k1]) |- sign(iskey(#a, [k2]), [k1])'), identityRule)
+```
+This gives us a proof that `#ca says iskey(#a, [k2])`, which we will need when applying the `Cert` rule to ultimately prove `iskey(#a, [k2])`. Let `seq2` be the following sequent, from which we can continue with the proof after using `Cut` to establish `#ca says iskey(#a, [k2])`.
+```
+ca(#ca),
+iskey(#ca, [k1]),
+#ca says iskey(#a, [k2])
+sign(iskey(#b, [k3]), [k1]),
+sign((#a says open(#c, <r>)) -> open(#c, <r>), [k3])
+sign(open(#c, <r>), [k2])
+    |- #b says open(#c, <r>)
+```
+The application of `Cut` is as follows.
+```
+Proof([p1, seq2], seq1, cutRule)
+```
+We can now continue the proof by working on `seq2`. The next step may be to apply `Cut` again, using the new assumption in `seq2` to prove `iskey(#a, [k2])` using `Cert`, so that it is available in the assumptions in the next sequent, in the right premise of that application of `Cut`.
+
+Before moving on, careful readers may have noticed that the assumptions in the sequent proved in `p1` are a subset of those in our original goal, `seq1`. Technically, we would need to apply a rule (weakening) several times to remove certain assumptions before this would be allowed. In this lab, tactics may produce proofs that apply weakening (i.e., remove assumptions) without a corresponding step in the proof; the verifier will not reject this. This makes proofs shorter and easier to read when printed to standard output, and thus hopefully easier to debug.
 
 #### Testing your prover
 
