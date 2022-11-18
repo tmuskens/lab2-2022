@@ -17,6 +17,150 @@ class Tactic(ABC):
     def apply(self, seq: Sequent) -> set[Proof]:
         return set([seq])
 
+class InstantiateForallTactic(Tactic):
+
+    """
+    A general tactic for proving sequents with a quantified
+    formula in the context. The constructor takes a set of
+    objects to instantiate the quantified variable with, and
+    for each object `e`, `apply` returns a proof with one application
+    of `@L` where the quantified variable is replaced with `e`
+    in the context of the premise.
+    """
+    
+    def __init__(self, grounds: set[Formula|Agent|Resource|Key]):
+        self.grounds = grounds
+
+    def apply(self, seq: Sequent) -> set[Proof]:
+        pfs = set([])
+        # seq is p1, ..., pn |- delta
+        for p in seq.gamma:
+            if not isinstance(p.p, Forall):
+                continue
+            # p is Proposition(@x . q)
+            x = p.p.x
+            q = p.p.p
+            for e in self.grounds:
+                # A new assumption to add to the context of the premise
+                # by substituting e for x.
+                new_assume = Proposition(apply_formula(q, {x: e}))
+                # If this assumption is already in the context, don't bother
+                # generating a proof
+                if new_assume not in seq.gamma:
+                    # The context for the premise of the proof that will be added
+                    # contains the new assumption, and removes the @x . p judgement
+                    # to avoid repeating the same step in the future.
+                    new_gamma = [r for r in seq.gamma if r != p] + [new_assume]
+                    # Before adding the proof, need to check whether delta is a
+                    # truth (proposition) judgement or affirmation.
+                    # This determines whether to use the "normal" @L rule, or the
+                    # version that matches affirmation judgements.
+                    which_rule = forallLeftRule if isinstance(seq.delta, Proposition) else forallLeftAffRule
+                    # Add the proof to the return set.
+                    pfs |= set([Proof([Sequent(new_gamma, seq.delta)], seq, which_rule)])
+        return pfs
+
+class SignTactic(Tactic):
+
+    """
+    A tactic for incorporating a signed credential into
+    assumptions as a `says` formula. The `says` formula
+    obtained by applying the `Sign` rule to `cred` with
+    the public key of `agent` is incorporated into the
+    context of an application of `Cut`. So if this tactic
+    were constructed as:
+    
+    SignTactic(parse('sign(open(#b, <r>), [k])'), Agent('#a'))
+    
+    And applied to the following sequent:
+    
+    iskey(#a, [k]), sign(open(#b, <r>), [k]) |- P
+
+    Then it would yield the following proof.
+
+                      T.0  T.1
+cut -------------------------------------------------
+      iskey(#a, [k]), sign(open(#b, <r>), [k]) |- P
+
+    The premise `T.0` will be a closed proof of
+    `#a says open(#b, <r>)` if and only if:
+        - The `cred` argument is in the context of the
+          sequent that the tactic is applied to.
+        - The sequent that the tactic is applied to
+          has an `iskey` predicate that associates the
+          `agent` argument with the key appearing in
+          the `cred` argument, i.e. `iskey(#a, [k])` in
+          this example.
+    The premise `T.1` of the resulting proof will be a
+    sequent (i.e., an open/unclosed premise) with a set
+    of assumptions identical to those in the sequent that
+    the tactic is applied to, but will also include
+    `#a says open(#b, <r>)`. I.e.:
+
+    #a says open(#b, <r>), iskey(#a, [k]), sign(open(#b, <r>), [k]) |- P
+
+    If the two conditions listed above are not true of
+    the sequent that the tactic is applied to, then
+    `apply` returns the empty set.
+
+    The proofs returned by this tactic can be closed by
+    combining with other tactics using `ThenTactic`, or
+    by applying other tactics to `pf.premises[1].conclusion`,
+    (assuming `pf` is the returned proof), which will contain
+    the unfinished sequent with the new `says` in its
+    assumption, and chaining the two proofs together with
+    `chain`.
+    """
+    
+    def __init__(self, cred: Formula, agent: Agent):
+        self._cred = cred
+        self._ag = agent
+        # _says is the formula that we want to introduce in the cut
+        self._says = App(Operator.SAYS, 2, [agent, cred.args[0]])
+        # _iskey associates agent to the key in cred
+        self._iskey = App(Operator.ISKEY, 2, [agent, cred.args[1]])
+        # cred and _iskey need to be present in the sequent to
+        # apply this tactic
+        self._reqs = [
+            Proposition(cred),
+            Proposition(self._iskey)
+        ]
+
+    def apply(self, seq: Sequent) -> set[Proof]:
+        # make sure all of the required assumptions are present
+        if not all(p in seq.gamma for p in self._reqs):
+            return set([])
+        # if the `says` formula is already in the sequent's
+        # assumptions, then there is no need to introduce it
+        # again
+        if Proposition(self._says) in seq.gamma:
+            return set([])
+        # cutgoal is the formula that we want to prove in the
+        # left premise of the `cut` appliction
+        cutgoal = Sequent(seq.gamma, Proposition(self._says))
+        # `Sign` requires proving `_iskey` and `_cred`
+        # We already checked that these are in the context,
+        # so if we've gotten this far then we know that both
+        # are proved with one application of the identity rule
+        pf_iskey = get_one_proof(Sequent(seq.gamma, Proposition(self._iskey)), RuleTactic(identityRule))
+        pf_cred = get_one_proof(Sequent(seq.gamma, Proposition(self._cred)), RuleTactic(identityRule))
+        # The left premise of the cut is proved by combining these proofs
+        # using the `Sign` rule
+        pf_cutgoal = Proof([pf_iskey, pf_cred], cutgoal, signRule)
+        # The right premise of the cut will copy the assumptions
+        # in the current sequent, and add _says
+        new_gamma = (
+            seq.gamma + 
+            [Proposition(self._says)]
+        )
+        newgoal = Sequent(new_gamma, seq.delta)
+        # We need to look at the delta (proof goal) of the given sequent
+        # to determine whether to use the version of `cut` for truth
+        # or affirmation judgements
+        whichRule = cutRule if isinstance(seq.delta, Proposition) else affCutRule
+        # Now put everything together and return the proof
+        return set([Proof([pf_cutgoal, newgoal], seq, whichRule)])
+
 class RuleTactic(Tactic):
 
     """
