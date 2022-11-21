@@ -22,7 +22,7 @@ def allvars(p: Formula|Judgement|Sequent|Proof) -> set[Variable]:
         case App(_, _, args):
             return set().union(*[allvars(arg) for arg in args])
         case Forall(x, p):
-            return set([x]).union(allvars(p))
+            return allvars(p) - set([x])
         case Proposition(q):
             return allvars(q)
         case Affirmation(Variable(x), q):
