@@ -145,10 +145,11 @@ def generate_request(pf: Proof, ag: Agent) -> AccessRequest:
 		if not(isinstance(sg.args[0], App) and sg.args[0].op == Operator.ISKEY)
 	]
 	certs = [Certificate.load_certificate(ca) for ca in cas | set([ag]) | set(cert_creds)]
-	all_creds = {cred.sign_formula(): cred for cred in load_all_creds()}
+	creds = [Credential.load_credential(cred) for cred in glob('credentials/*.cred')]
+	all_creds = {cred.sign_formula(): cred for cred in creds}
 	creds = [all_creds[cred] for cred in policy_creds]
 	return AccessRequest.make_for_proof(pf, ag, creds, certs)
-
+	
 if __name__ == '__main__':
 	import sys
 	import argparse
