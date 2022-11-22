@@ -13,12 +13,13 @@ from prover import prove
 from util import stringify
 from parser import parse
 from crypto import (
-	AccessRequest,
-	Certificate,
-	Credential,
-	fingerprint,
-	verify_request
+    AccessRequest,
+    Certificate,
+    Credential,
+    fingerprint,
+    verify_request
 )
+
 
 def sequent_context(creds: set[Credential]) -> list[Judgement]:
 	"""
@@ -88,7 +89,7 @@ def gather_credentials(ob: Proof|Sequent|Formula) -> set[Formula]:
 		case App(Operator.SIGN, _, _):
 			return set([ob])
 		case App(_, _, args):
-			set().union(*[gather_credentials(arg) for arg in args])
+			return set([]).union(*[gather_credentials(arg) for arg in args])
 		case _:
 			return set([])
 
@@ -111,7 +112,7 @@ def gather_cas(ob: Proof|Sequent|Formula) -> set[Agent]:
 		case App(Operator.ISCA, 1, [ca]):
 			return set([ca])
 		case App(_, _, args):
-			set().union(*[gather_cas(arg) for arg in args])
+			return set([]).union(*[gather_cas(arg) for arg in args])
 		case _:
 			return set([])
 
@@ -149,7 +150,7 @@ def generate_request(pf: Proof, ag: Agent) -> AccessRequest:
 	all_creds = {cred.sign_formula(): cred for cred in creds}
 	creds = [all_creds[cred] for cred in policy_creds]
 	return AccessRequest.make_for_proof(pf, ag, creds, certs)
-	
+
 if __name__ == '__main__':
 	import sys
 	import argparse
@@ -197,19 +198,19 @@ if __name__ == '__main__':
 							  data=urlencode({
 								  "request": req.serialize()
 							  }).encode('utf-8'),
-							  headers={'Content-Encoding': 'gzip'},
 							  method='POST')
 			try:
-				response_object = urlopen(request, timeout=10)
+				response_object = urlopen(request, timeout=100)
 			except HTTPError as e:
 				response_object = e
 
+			resp_json = json.load(response_object)
 			print('\nserver response:')
 			try:
-				new_cred = Credential.from_json(json.load(response_object))
+				new_cred = Credential.from_json(resp_json)
 				print(new_cred)
 			except:
-				print(json.load(response_object))
+				print(resp_json)
 		else:
 			print('\ngenerated request:')
 			print(req)
