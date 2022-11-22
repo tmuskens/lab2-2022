@@ -1,5 +1,15 @@
 # Lab 2: Authorization & Trust
 
+### Contents
+
+* [Getting Started](#getting-started)
+* [Part 1](#implementing-an-authorization-prover)
+    * [Logic](#authorization-logic)
+    * [Proof goals](#proof-goals)
+    * [Tactics](#tactics)
+    * [Testing](#testing-your-prover)
+* [Part 2](#exploiting-an-authorization-vulnerability)
+
 ### Learning goals
 
 * Understand the core techniques that are used to automatically prove theorems like those needed for the authorization logic discussed in lecture.
@@ -40,7 +50,6 @@ aditi_secret.cred
 jack_secret.cred
 mfredrik_secret.cred
 mfredrik_shared.cred
-mfredrik_txt.cred
 nuno_secret.cred
 policy1.cred
 policy2.cred
@@ -71,7 +80,11 @@ may result in a parser error. It should be run as follows:
 ```
 parse('@x . (@y . (open(x, y)))')
 ```
-The grammar is given below. 
+
+<details>
+    <summary><b>Further details: grammar, rules, and proofs</b></summary>
+
+The full grammar is given below. 
 ```
 <agent>   ::= x                            // variable
             | #a                           // constant
@@ -200,6 +213,7 @@ affCutRule = Rule(
 )
 ```
 These rules are the same as their "normal" counterparts from lecture, but they match sequents with an affirmation judgement on the right. You are free to use these rules when constructing `Proof` objects, and doing so should make developing tactics less intricate, as you have more freedom to decide when to apply the right `says` rule.
+</details>
 
 ### Proof goals
 
@@ -234,8 +248,58 @@ To prove that you can access `<secret.txt>`:
 ```
 ... |- #root says open(#andrewid, <secret.txt>)
 ```
+The context, or assumptions left of the turnstile, that your prover will be given, is populated automatically from the certificates and credentials (in the `certs` and `credentials` directories) distributed with the lab.
 
-#### Credentials and Certificates
+A *certificate* is a formula in which a certificate authority (identified by `#ca` in this lab) signs that a public key belongs to a given agent:
+```
+sign(iskey(#agent, [agent_key_fingerprint]), [ca_key_fingerprint])
+```
+A key fingerprint is a string that uniquely identifies a public key, for example `[68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]`.
+
+A *credential* is a formula that is signed by an agent to express authentic intent. For example, in `policy1.cred`, `#root` signs the first delegation policy above. This becomes an assumption in the prover's context:
+```
+sign(((@A . (((#mfredrik says open(A, <shared.txt>)) -> open(A, <shared.txt>))))), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])
+```
+Note that `#root` does not appear in this formula, but we can check that `[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]` is the public key belonging to `#root` by noting that there is a certificate loaded in to the context that associates this key with `#root`, signed by `#ca`:
+```
+sign((iskey(#root, [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40])
+```
+Recall that our logic allows converting `sign` formulas into `says`, so each credential and certificate can be used to derive a corresponding `says` formula.
+
+When your prover is loaded, assuming that you have removed unnecessary certificates and credentials as [outlined earlier](#getting-started), the following context will be present as assumptions for your prover to use.
+```
+ca(#ca) true,
+iskey(#ca, [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]) true,
+sign((iskey(#nuno, [33:37:30:b5:9c:82:c6:0a:44:e9:06:8c:59:cd:f7:dc])), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]) true,
+sign((iskey(#mfredrik, [2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf])), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]) true,
+sign((iskey(#root, [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]) true,
+sign((iskey(#aditi, [38:24:c8:d0:bc:d5:e6:31:7b:91:97:0f:82:b0:4e:72])), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]) true,
+sign((iskey(#jack, [98:50:c6:80:ae:eb:1e:46:bf:a8:67:61:03:83:bc:56])), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]) true,
+sign((open(#andrewid, <secret.txt>)), [33:37:30:b5:9c:82:c6:0a:44:e9:06:8c:59:cd:f7:dc]) true,
+sign((open(#andrewid, <shared.txt>)), [2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf]) true,
+sign((open(#andrewid, <andrewid.txt>)), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]) true,
+sign((open(#aditi, <secret.txt>)), [2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf]) true,
+sign((open(#jack, <secret.txt>)), [38:24:c8:d0:bc:d5:e6:31:7b:91:97:0f:82:b0:4e:72]) true,
+sign((open(#mfredrik, <secret.txt>)), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]) true,
+sign((open(#mfredrik, <shared.txt>)), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]) true,
+sign((open(#nuno, <secret.txt>)), [98:50:c6:80:ae:eb:1e:46:bf:a8:67:61:03:83:bc:56]) true,
+sign(((@A . (((#mfredrik says open(A, <shared.txt>)) -> open(A, <shared.txt>))))), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]) true,
+sign(((@A . ((@R . ((open(A, R) -> (@B . (((A says open(B, R)) -> open(B, R)))))))))), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]) true
+```
+
+#### Getting started
+
+Before moving on, we recommend that you work the following out on pencil and paper.
+1. Identify which of the certificates and credentials above are necessary to prove the first goal `#root says open(#andrewid, <andrewid.txt>)`.
+2. Review using the `Cert` rule to prove `#ca says iskey(#root, [...])`.
+3. Review using the `Sign` rule to prove `#root says open(#andrewid, <andrewid.txt>)`.
+4. Put the pieces together to complete the proof of the first goal.
+
+As you complete each proof goal, you may want to repeat parts of this pencil-and-paper exercise before implementing a prover for the next (more complex) goal.
+
+<details>
+    <summary><b>Optional reading: further details on credentials and certificates</b></summary>
+
 In each of the sequents that you will prove above, the context (i.e., assumptions to the left of the sequent) is given by the set of credentials and certificates distributed with the lab in the `credentials` and `certs` directories, respectively. 
 
 Each credential is a formula signed by another agent. For example, the following credential is signed by `#root`, and says that `#andrewid` is authorized to open `<andrewid.txt>`.
@@ -281,19 +345,11 @@ Finally, the following assumptions are always added, to establish that `#ca` is 
 ca(#ca)
 iskey(#ca, [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40])
 ```
-
-#### Running `auth.py`
-
-When you run `auth.py`, giving it an `agent` and a `resource` as arguments: 
-```
-> python src/auth.py agent resource
-```
-it gathers the assumptions discussed in the previous section into a context `Gamma`, constructs the sequent `Gamma |- #root says open(#agent, <resource>)`, and calls your prover. If your prover finds a proof, then `auth.py` scans the proof to determine which credentials and certificates are *actually* needed, and constructs an authorization request containing your proof along with all of the necessary credentials and certificates to verify it.
-
-You may run `auth.py` with the `-s` flag, and a request will be sent to an authorization server. If your proof verifies, and all of the credentials check out, then you will recieve a credential back from the server letting you know that `#root` grants access.
+</details>
 
 ### Tactics
 
+Your task is to implement `prove` in `prover.py` to discharge each of the authorization goals described in the previous section.
 As discussed in lecture, your prover will make use of a set of tactics that you design to construct authorization proofs. A tactic is simply a class with the following signature:
 ```
 class Tactic(ABC):
@@ -302,48 +358,137 @@ class Tactic(ABC):
     def apply(self, seq: Sequent) -> set[Proof]:
         return set([seq])
 ```
-The `apply` method accepts a sequent, and generates a set of proofs. Several tactics are provided for you in `prover.py`. Consult their documentation strings to learn more about what they do.
+The `apply` method accepts a sequent, and generates a set of proofs. 
+Several tactics are provided for you in `prover.py`. 
+* `InstantiateForallTactic`: use the left universal quantifier rule to instantiate a quantified assumption with a chosen term to substitute in for the quantified variable. For example, a tactic constructed as `InstantiateForallTactic([Agent('#mfredrik')])` and applied to `@x . open(x, <r>) |- open(#andrewid, <r>)`, would yield a proof that applies `@L` once, ending with the (unclosed) sequent `open(#mfredrik, <r>) |- open(#andrewid, <r>)`.
+* `SignTactic`: apply the `Sign` rule to a specified `sign` formula in the assumptions, replacing it with the corresponding `says` formula. The docstring for this tactic provides an example of its use.
+* `RuleTactic`: apply a given proof rule, which is passed to the constructor. We detailed this tactic in lecture, and show examples of its use below.
+* `ThenTactic`: apply a given sequence of tactics to make progress towards closing a proof. This is the most important "meta" tactic that you will use, as it allows you to chain tactics together, mirroring the process that you would take to writing a proof manually.
+* `RepeatTactic`: apply a given tactic repeatedly until no further progress can be made. You are welcome to use this tactic, but it is not necessary to complete this lab, and we warn that **this tactic can make it more difficult to debug your solution**. Do not use this tactic unless you are confident that it will behave as you expect.
+* `OrElseTactic`: given a sequence of tactics, apply them (in order) until one makes progress. Once progress has been made, exit the tactic.
 
-For example, we can construct a simple tactic that repeatedly applies the left implication rule and the identity rule:
-```
-t = RepeatTactic(
-        ThenTactic([
-            RuleTactic(impLeftRule),
-            RuleTactic(identityRule)
-        ])
-    )
-```
-This is sufficient to prove basic implication chains. When we run the following:
-```
-print(stringify(t.apply(parse('P, P -> Q, Q -> R |- R'))))
-```
-The result is the following proof:
-```
-                          T.0  T.1
-->L ---------------------------------------------------
-      P true, (P -> Q) true, (Q -> R) true |- R true
+<details>
+<summary><b>Chaining Tactics</b></summary>
 
-Proof T.1:
-                        *
-id -------------------------------------------
-     (P -> Q) true, R true, P true |- R true
-
-Proof T.0:
-               *                             *
-   id --------------------   id ----------------------------
-        P true |- P true          Q true, P true |- Q true
-->L ------------------------------------------------------------
-                 (P -> Q) true, P true |- Q true
+Although we did not describe it as such, we have been using tactics throughout the semester when we demonstrate reasoning using formal inference rules and sequent proofs.
+For example, to write a proof for the sequent:
 ```
-However, the tactics provided in the starter code are not sufficient to produce authorization proofs. Crucially, they do not explicitly deal with the `ca`, `iskey` and `sign` formulas that will populate the context, or the universal quantifiers needed to discharge the two delegation policies.
+R |- P -> Q -> R
+```
+You may immediately think, "apply the right implication rule twice, and then apply the identity rule to close the proof".
+This approach is formalized by composing `ThenTactic` with several instances of `RuleTactic`.
+```
+t = ThenTactic([
+    RuleTactic(impRightRule),
+    RuleTactic(impRightRule),
+    RuleTactic(identityRule)
+])
+```
+Applying the above tactic to the sequent in question yields a losed proof.
+```
+                          *
+      id ------------------------------------
+           Q true, P true, R true |- R true
+   ->R ------------------------------------------
+           R true, P true |- (Q -> R) true
+->R -------------------------------------------------
+            R true |- (P -> (Q -> R)) true
+```
+Under the hood, `ThenTactic` accomplishes this by chaining incomplete proofs together.
+After applying the first `RuleTactic(impRightRule)`, the (single) resulting proof is:
+```
+   P true, R true |- (Q -> R) true
+->R ---------------------------------
+    R true |- (P -> (Q -> R)) true
+```
+`ThenTactic` checks to see if this proof has any unclosed branches, and finds that there is one branch that progress can be made on by applying the next rule.
+```
+P true, R true |- (Q -> R) true
+```
+Applying the next tactic passed to `ThenTactic`, to attempt a proof of the sequent directly above, yields another unfinished proof.
+```
+   P true, R true, Q true |- R true
+->R ----------------------------------
+    P true, R true |- (Q -> R) true
+```
+`ThenTactic` finds the unfinished premise, and applies the final `RuleTactic(identityRule)`, to close it out.
+```
+                    *
+id ------------------------------------
+     P true, R true, Q true |- R true
+```
+Each time that `ThenTactic` applies the next tactic to derive a proof for an open branch, it substitutes the unfinished branch with that proof. For example, `P true, R true, Q true |- R true` from the penultimate proof is substituted with the proof directly above to work, in a backwards fashion, towards the original goal.
+```
+                       *
+   id ------------------------------------
+        Q true, P true, R true |- R true
+->R ------------------------------------------
+        P true, R true |- (Q -> R) true
+```
+Chaining this proof with the original unfinished branch, `P true, R true |- (Q -> R) true`, completes the proof.
 
-Your task is to implement `prove` in `prover.py` to address these shortcomings. Design one or more tactics that can make use of the `sign` credentials given as assumptions by `auth.py` to prove each of the three authorization claims described in the previous section.
-* We encourage you to break this task up into smaller, modular tactics rather than attempting to write a large, monolithic tactic. For example, tactics that deal with converting `sign(...)` formulas into `says` formulas (according to the `Sign` rule) separately from dealing with the quantifiers in the delegation policies will be easier to reason about and debug.
-* When thinking about how to handle the delegation policies, consider working backwards through delegation credentials in a goal-oriented fashion. Although it may be tempting to write a tactic that deals with universal quantifiers in a very general way, this approach can be difficult to scale.
+This approach can also be used to transform assumptions to the left of the sequent.
+Suppose that we have in our assumptions `iskey(#ca, [kca])`, `sign((iskey(#root, [kr])), [kca])`, and `sign((open(#a, <a.txt>)), [kr])`.
+We want to prove that `#root says open(#a, <a.txt>)`.
+If we were to implement a `CertTactic`, which takes an agent named in a certificate, their public key fingerprint, an agent who is a certificate authority, and the authority's public key certificate, then we might attempt to prove this goal with the following tactic.
+```
+t = ThenTactic([
+    SignTactic(parse('sign(iskey(#root, [kr]), [kca])'), Agent('#ca')),
+    CertTactic(Agent('#root'), Key('[kr]'), Agent('#ca'), Key('[ca]')),
+    SignTactic(parse('sign((open(#a, <a.txt>)), [kr])'), Agent('#root')),
+    RuleTactic(identityRule)
+])
+```
+Now we can think through the steps that `ThenTactic` will take.
+First applying `SignTactic` will yield a proof with two branches, `T.0` and `T.1`.
+```
+                                                           T.0  T.1
+cut --------------------------------------------------------------------------------------------------------------------------
+      iskey(#ca, [kca]), sign((iskey(#root, [kr])), [kca]), sign((open(#a, <a.txt>)), [kr]) |- #root says open(#a, <a.txt>)
+```
+The left branch `T.0` is a short proof that uses the `Sign` rule to prove `(#ca says iskey(#root, [kr]))` from the assumptions listed above.
+This branch is already closed, because `iskey(#ca, [kca])` and `sign((iskey(#root, [kr]), [kca])` are already in the assumptions.
+The right branch `T.1`, on the other hand, is just the following sequent:
+```
+iskey(#ca, [kca]), sign((open(#a, <a.txt>)), [kr]), (#ca says iskey(#root, [kr])) |- (#root says open(#a, <a.txt>))
+```
+`ThenTactic` will apply the next tactic to continue making progress on it, but observe that the formula `sign((iskey(#root, [kr]), [kca])` has been replaced with `#ca says iskey(#root, [kr])`.
+This is useful, because the `Cert` rule has as a premise that if we want to derive `iskey(#root, [kr])`, then we need to prove `ca(#ca)` and `#ca says iskey(#root, [kr])`.
+Thus, to implement `CertTactic`, we want its `apply` method to take a sequent like the one above, and produce a proof like the following:
+```
+                                                        T.0  T.1
+cut -------------------------------------------------------------------------------------------------------------------
+      iskey(#ca, [kca]), sign((open(#a, <a.txt>)), [kr]), #ca says iskey(#root, [kr]) |- #root says open(#a, <a.txt>)
+```
+Where `T.0` is a short, closed proof that applies the `Cert` rule to prove `iskey(#root, [kr])`, and `T.1` is the following sequent which incorporates that result as an assumption:
+```
+iskey(#ca, [kca]), sign((open(#a, <a.txt>)), [kr]), iskey(#root, [kr]) |- #root says open(#a, <a.txt>)
+```
+This allows `ThenTactic` to apply the next tactic, `SignTactic(parse('sign((open(#a, <a.txt>)), [kr])'), Agent('#root'))`, to this sequent, yielding a new branch:
+```
+iskey(#ca, [kca]), #root says open(#a, <a.txt>), iskey(#root, [kr]) |- #root says open(#a, <a.txt>)
+```
+Finally, `ThenTactic` can close this one remaining branch with `RuleTactic(identityRule)`, and chain the intermediate proofs together to finish up.
+
+This is the approach that you should aim to take when developing your solution: write short, narrowly-focused tactics that can be combined with others using `ThenTactic` to complete proofs for each of the three goals.
+Develop insights for which tactics you need to write from your experience working through proofs manually, so that the sequence of tactics that you give to `ThenTactic` mirror your knowledge of how to complete sequent proofs of authorization logic formulas.
+</details>
+
+#### Getting started
+
+If you have not read the previous section, **Chaining Tactics** do so first.
+1. Implement the `CertTactic` whose behavior was described in the example from the previous section. Doing so should allow you to use `ThenTactic` to complete the first authorization proof goal of the lab.
+2. Develop a tactic that allows you to take advantage of the first delegation policy, which contains a single universal quantifier. You may use `InstantiateForallTactic`, but it may help to first attempt the proof manually to see how to use this tactic effectively. This will allow you to develop a `ThenTactic` that handles the second authorization proof goal, possibly using tactics that you developed for step 1.
+3. Start a manual proof of the third authorization goal. Closing it out will be tedious, but likely unnecessary in order to gain enough insight to plan a tactic for this goal. To minimize the amount of additional work required, look for ways to reuse the tactics that you developed for earlier goals.
+
+As you proceed, there are several things that may be helpful to keep in mind.
+* Do not implement a prover that can handle more general delegation policies, or anything beyond the three goals of this lab. Your prover only needs to produce proofs for the policies and formulas given in the previous section, so don't do more work than necessary!
+* When considering how to handle transitive delegation (i.e., the third authorization goal), look for ways to do "work" outside of tactics. For example, it may be wise to scan the assumptions in the sequent given to `prover` to first figure out which agents are involved in a delegation chain leading from `#root` to `#andrewid`, and use that information to determine which tactics to include in a sequence given to `ThenTactic`. This will allow the tactics themselves to be simpler and more narrowly-focused on making definite progress towards closing out a proof.
 * Part of your grade will be calculated by the number of unnecessary credentials and certificates that your authorization requests contain: your proof should not rely on credentials that are not actually needed to make a successful authorization. You should consider this when designing tactics that deal with `sign(...)` formulas: they could all be converted to `says` formulas eagerly before doing anything else, but this would mean that your proof would always rely on *every* certificate and credential provided in the context. It is better to consider tactics that only make use of `sign` formulas when they are needed to make progress handling the delegation policy.
-* Study the starter tactics and their comments if you are unsure how to begin. It's fine to start small: write tactics that emulate the steps that you would take to complete a proof by hand, and test them early. Use these tactics as building blocks to handle more complex formulas, until you are able to complete the authorization requests described in the previous section.
+* It's fine to start small: write tactics that emulate the steps that you would take to complete a proof by hand, and test them early. Use these tactics as building blocks to handle more complex formulas, until you are able to complete the authorization requests described in the previous section.
 
-#### Tip: don't forget about `Cut`
+<details>
+    <summary><b>Tip: don't forget to `Cut`</b></summary>
 
 In lecture we mentioned that the authorization logic does not need the `Cut` rule: any proof that uses `Cut` can be rewritten without it. However, your tactics are free to produce proofs that use `Cut`, and you may find that it is more straightforward to use `Cut` when the `Sign` and `Cert` rules are needed than otherwise. Consider the following sequent, which we will refer to as `seq1`.
 ```
@@ -390,15 +535,27 @@ We can now continue the proof by working on `seq2`. The next step may be to appl
 
 Before moving on, careful readers may have noticed that the assumptions in the sequent proved in `p1` are a subset of those in our original goal, `seq1`. Technically, we would need to apply a rule (weakening) several times to remove certain assumptions before this would be allowed. In this lab, tactics may produce proofs that apply weakening (i.e., remove assumptions) without a corresponding step in the proof; the verifier will not reject this. This makes proofs shorter and easier to read when printed to standard output, and thus hopefully easier to debug.
 
+</details>
+
 #### Testing your prover
 
 The starter code in `prover.py` is configured to run your implementation of `prove` on a set of smaller tests in `prover_tests.txt` when invoked from the command line from the root of this repository.
 ```
 > python src/prover.py
 ```
-These tests are not graded, but we recommend that you start developing your prover with the goal of passing progressively more of these tests. These will be easier to debug than the ultimate authorization goals of the lab, as they have fewer assumptions, and require fewer proof steps to complete. We encourage you to add more tests to this file depending on issues you encounter when developing your tactics.
+These tests are not graded, but they may be helpful when developing specific tactics as they have fewer assumptions, and require fewer proof steps to complete. The recommended way to use these tests is to start from the simpler formulas, develop tactics that can be sequenced together to complete them. Look to incrementally add functionality until you are able to complete the tests near the end of `prover_tests.txt`, which are qualitatively similar to the real proof goals of the lab. Note that when your `prove` function is able to complete the more realistic tests near the end, it may fail on earlier tests that look very different (e.g., cases that have `says` instead of `sign` formulas in their assumptions). This is expected, and you are not graded on these test cases.
 
-When you believe that your prover is able to handle the actual delegation policies, run the following commands to construct authorization requests from proofs, and send them to the server:
+Note that as you complete more of the lab, your prover may not be configured to solve each of the sequents in `prover_tests.txt` directly, as they look 
+
+When you believe that your prover is able to handle the actual delegation policies, run `auth.py`, giving it an `agent` and a `resource` as arguments: 
+```
+> python src/auth.py agent resource
+```
+it gathers the assumptions discussed in the previous section into a context `Gamma`, constructs the sequent `Gamma |- #root says open(#agent, <resource>)`, and calls your prover. If your prover finds a proof, then `auth.py` scans the proof to determine which credentials and certificates it uses, and constructs an authorization request containing your proof along with all of the necessary credentials and certificates to verify it.
+
+You may run `auth.py` with the `-s` flag, and a request will be sent to an authorization server. If your proof verifies, and all of the credentials check out, then you will recieve a credential back from the server letting you know that `#root` grants access.
+
+For reference, the following three commands correspond to the proof goals for this lab:
 ```
 > python src/auth.py -s andrewid andrewid.txt
 > python src/auth.py -s andrewid shared.txt
