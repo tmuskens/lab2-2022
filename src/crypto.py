@@ -577,6 +577,8 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 
 	# Now check the proof
 	# First construct the sequent context from the credentials and certificates
+	ca_cert = Certificate.load_certificate(Agent("#ca"))
+	cert_chain |= {Agent('#ca'): ca_cert}
 	gamma = [
 		Proposition(parse('ca(#ca)')),
 		Proposition(parse(f'iskey(#ca, {fingerprint(Certificate.load_certificate(Agent("#ca")).public_key)})'))
