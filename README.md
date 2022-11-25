@@ -603,7 +603,7 @@ You will also find code that generates `AccessRequest` objects in `generate_requ
 
 <details>
     <summary><b>Example API usage</b></summary>
-    
+
 To recap the APIs for creating credentials and agents described above, suppose that an agent `#andrew` (hypothetically) wished to use a policy which required that the "normal" certificate authority, `#ca`, in addition to their own "private" authority `#andrew_ca`, *both* issued certificates for a key before they were willing to trust it.
 `#andrew` would begin by constructing a new agent to represent their private CA:
 ```
@@ -683,12 +683,12 @@ signature: [df:3c:72:1f:2e:1a:41:6b:31:34:e7:8e:b3:fc:88:ef]
 **********************************************************************************
 ==================================================================================
 ============================= Public Key Certificate =============================
-key: [6b:ff:7a:3b:6d:85:4e:b8:1d:55:a8:d2:83:10:f7:2e]
+key: [5a:e0:7b:85:39:93:da:aa:e9:c3:ec:13:4c:f5:46:81]
 agent: #scotty
 *********************************** Credential ***********************************
-statement: iskey(#scotty, [6b:ff:7a:3b:6d:85:4e:b8:1d:55:a8:d2:83:10:f7:2e])
+statement: iskey(#scotty, [5a:e0:7b:85:39:93:da:aa:e9:c3:ec:13:4c:f5:46:81])
 signator: #ca
-signature: [cb:a3:70:d7:b1:64:95:a4:10:d2:78:f1:3a:56:ec:48]
+signature: [48:e6:7f:c7:38:a5:4b:d2:49:dc:0d:62:0e:d3:44:92]
 **********************************************************************************
 ==================================================================================
 ============================= Public Key Certificate =============================
