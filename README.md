@@ -599,7 +599,110 @@ Note that the credentials provided with the lab will not allow you to prove the 
 * Certificates are constructed by calling `Certificate.make_for_key` with three arguments: a public key to create the certificate for, an agent to associate with the public key, and an agent whose private key will be used to sign the certificate.
 * You can also generate new users, with private keys stored locally in `private_keys`, by calling `new_user` in `src/crypto.py`. For example, calling `new_user(Agent('#andrew'), Agent('#mfredrik'))` will create an agent called `#andrew`, with a private key stored in `private_keys/andrew.pem`, and a certificate stored in `certs/andrew.cert`. The certificate will be signed with the private key of `#mfredrik`, so in order for this call to succeed, `mfredrik.pem` must be in the `private_keys` directory. This means that you can make new agents with certificates signed by *your* private key, but because you do not have private keys for `#ca` or `#root`, calling `new_user(Agent('#ca'), Agent('#ca'))` will fail. **However**, `new_user` does allow you to create a new user with a self-signed certificate, so calling `new_user(Agent('#andrew'), Agent('#andrew'))` will succeed, and will result in `andrew.cert` and `andrew.pem` being placed in the appropriate directories as described above.
 
-You will find code that generates `AccessRequest` objects in `generate_request`, in `auth.py`. You may be able to use this function to construct the request, but it may be more straightforward to use the code in that function as an example to work from.
+You will also find code that generates `AccessRequest` objects in `generate_request`, in `auth.py`. You may be able to use this function to construct the request, but it may be more straightforward to use the code in that function as an example to work from.
+
+<details>
+    <summary><b>Example API usage</b></summary>
+    
+To recap the APIs for creating credentials and agents described above, suppose that an agent `#andrew` (hypothetically) wished to use a policy which required that the "normal" certificate authority, `#ca`, in addition to their own "private" authority `#andrew_ca`, *both* issued certificates for a key before they were willing to trust it.
+`#andrew` would begin by constructing a new agent to represent their private CA:
+```
+private_ca = new_user(Agent('#andrew_ca'), Agent('#andrew_ca'))
+```
+To have the private CA sign `#scotty`'s public key, they would load `#scotty`'s public key from their existing certificate, and construct a new certificate by signing it with the private CA's key:
+```
+scotty_normal_cert = Certificate.load_certificate(Agent('#scotty'))
+scotty_private_cert = Certificate.make_for_key(scotty_normal_cert.public_key, Agent('#scotty'), Agent('#andrew_ca'))
+```
+This would yield a new certificate, stored in `scotty_private_cert`:
+```
+============================= Public Key Certificate =============================
+key: [ae:dc:02:99:da:01:bd:ca:09:5f:6b:c8:90:b2:ff:e0]
+agent: #scotty
+*********************************** Credential ***********************************
+statement: iskey(#scotty, [ae:dc:02:99:da:01:bd:ca:09:5f:6b:c8:90:b2:ff:e0])
+signator: #andrew_ca
+signature: [c9:b7:6c:35:1f:22:9d:35:27:78:5a:2b:86:09:59:c6]
+**********************************************************************************
+==================================================================================
+```
+`#andrew` might give them a credential that they are allowed to open a resource, created using `Credential.from_formula`:
+```
+scotty_cred = Credential.from_formula(parse('open(#scotty, <res>)'), Agent('#andrew'))
+```
+With this credential, `#scotty` could prove that they are able to access `<res>`, according to `#andrew`'s policy, and construct an access request that contains all of the necessary credentials.
+```
+pf = prove(parse('ca(#ca), ca(#andrew_ca), ... |- #andrew says open(#scotty, <res>)'))
+andrew_cert = Certificate.load_certificate(Agent('#andrew'))
+normal_ca = Certificate.load_certificate(Agent('#ca'))
+request = AccessRequest.make_for_proof(pf, Agent('#scotty'), [scotty_cred], [scotty_normal_cert, scotty_private_cert, andrew_cert, normal_ca, private_ca])
+```
+This would yield the following access request.
+```
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Request <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+signature:
+*********************************** Credential ***********************************
+statement: (#andrew says open(#scotty, <res>))
+signator: #scotty
+signature: [6b:84:0b:93:b8:9d:a9:1b:3b:0b:52:96:0e:e2:d7:b3]
+**********************************************************************************
+
+credentials:
+*********************************** Credential ***********************************
+statement: open(#scotty, <res>)
+signator: #andrew
+signature: [94:92:3c:37:a5:65:ec:c4:a5:8c:71:6a:37:9d:45:73]
+**********************************************************************************
+
+certificates:
+============================= Public Key Certificate =============================
+key: [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]
+agent: #ca
+*********************************** Credential ***********************************
+statement: iskey(#ca, [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40])
+signator: #ca
+signature: [52:9d:bf:45:d3:78:be:73:c0:33:57:b8:9f:df:fe:ca]
+**********************************************************************************
+==================================================================================
+============================= Public Key Certificate =============================
+key: [09:e7:53:10:07:50:de:25:7f:bc:9f:f2:94:b1:51:7f]
+agent: #andrew_ca
+*********************************** Credential ***********************************
+statement: iskey(#andrew_ca, [09:e7:53:10:07:50:de:25:7f:bc:9f:f2:94:b1:51:7f])
+signator: #andrew_ca
+signature: [97:3c:4c:c4:70:12:cb:5f:2b:fb:04:11:9f:4c:40:c0]
+**********************************************************************************
+==================================================================================
+============================= Public Key Certificate =============================
+key: [62:da:f9:fd:d6:6d:89:62:cc:f7:65:f4:5d:6f:e3:cb]
+agent: #andrew
+*********************************** Credential ***********************************
+statement: iskey(#andrew, [62:da:f9:fd:d6:6d:89:62:cc:f7:65:f4:5d:6f:e3:cb])
+signator: #ca
+signature: [df:3c:72:1f:2e:1a:41:6b:31:34:e7:8e:b3:fc:88:ef]
+**********************************************************************************
+==================================================================================
+============================= Public Key Certificate =============================
+key: [6b:ff:7a:3b:6d:85:4e:b8:1d:55:a8:d2:83:10:f7:2e]
+agent: #scotty
+*********************************** Credential ***********************************
+statement: iskey(#scotty, [6b:ff:7a:3b:6d:85:4e:b8:1d:55:a8:d2:83:10:f7:2e])
+signator: #ca
+signature: [cb:a3:70:d7:b1:64:95:a4:10:d2:78:f1:3a:56:ec:48]
+**********************************************************************************
+==================================================================================
+============================= Public Key Certificate =============================
+key: [5a:e0:7b:85:39:93:da:aa:e9:c3:ec:13:4c:f5:46:81]
+agent: #scotty
+*********************************** Credential ***********************************
+statement: iskey(#scotty, [5a:e0:7b:85:39:93:da:aa:e9:c3:ec:13:4c:f5:46:81])
+signator: #andrew_ca
+signature: [b0:8a:f0:35:a4:ec:60:57:e6:9b:04:15:b8:0a:35:05]
+**********************************************************************************
+==================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+```
+</details>
 
 ## Utility code
 
