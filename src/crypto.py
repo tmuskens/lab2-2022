@@ -555,15 +555,15 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 	before verifying that all branches close.
 	
 	Args:
-	    req (AccessRequest): The request
-	    roots (list[Agent]): A list of trusted certificate authorities to use when
-	    	verifying certificates in the access request
+		req (AccessRequest): The request
+		roots (list[Agent]): A list of trusted certificate authorities to use when
+			verifying certificates in the access request
 	
 	Returns:
-	    Optional[Credential]: `None` if any credential or certificate in the request
-	    	cannot be verified, or if the proof cannot be verified using the provided
-	    	credentials and certificates as context. Otherwise, a credential signed by
-	    	#root containing the access request.
+		Optional[Credential]: `None` if any credential or certificate in the request
+			cannot be verified, or if the proof cannot be verified using the provided
+			credentials and certificates as context. Otherwise, a credential signed by
+			#root containing the access request.
 	"""
 	# First verify all of the certificates sent with the request
 	cert_chain = {cert.agent: cert for cert in req.certs}
@@ -572,26 +572,31 @@ def verify_request(req: AccessRequest, roots: list[Agent]=[]) -> Optional[Creden
 			return None
 	# Then verify the signatures on each of the credentials
 	for cred in req.creds:
-		if not cred.verify_signature():
+		if not cred.verify_signature(cert_chain[cred.signator].public_key):
 			return None
 
 	# Now check the proof
 	# First construct the sequent context from the credentials and certificates
-	ca_cert = Certificate.load_certificate(Agent("#ca"))
-	cert_chain |= {Agent('#ca'): ca_cert}
-	gamma = [
-		Proposition(parse('ca(#ca)')),
-		Proposition(parse(f'iskey(#ca, {fingerprint(Certificate.load_certificate(Agent("#ca")).public_key)})'))
+	cas = get_cas(req.proof.conclusion)
+	gamma = [Proposition(parse(f'ca({ca.id})')) for ca in cas]
+	gamma += [
+		Proposition(parse(f'iskey({ca.id}, {fingerprint(cert_chain[ca].public_key)})'))
+		for ca in cas
 	]
-	cert_chain |= {Agent('#ca'): ca_cert}
 	gamma += [Proposition(cert.cred.sign_formula(cert_chain[cert.cred.signator])) for cert in req.certs]
 	gamma += [Proposition(cred.sign_formula(cert_chain[cred.signator])) for cred in req.creds]
 
 	# Reformulate the proof using only this context
-	pf = rebase_proof(req.proof, gamma)
+	pf = rebase_proof(
+		Proof(
+			req.proof.premises, 
+			Sequent(gamma, req.proof.conclusion.delta), 
+			req.proof.rule), 
+		gamma
+	)
 
 	# Finally, verify the proof
-	if len(verify(pf)) > 0:
+	if len(verify(pf, feedback=False)) > 0:
 		return None
 
 	# If we've gotten this far, everything checks out

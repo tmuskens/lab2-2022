@@ -38,6 +38,7 @@ def verify_identity(pf: Proof, feedback: bool=True) -> bool:
     if not pf.conclusion.delta in pf.conclusion.gamma:
         if  feedback:
             print_feedback(pf, f'Proof goal ({stringify(pf.conclusion.delta)}) not in assumptions')
+        return False
 
     return True
 
