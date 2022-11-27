@@ -1,5 +1,9 @@
 # Lab 2: Authorization & Trust
 
+In this lab, you will start by developing a client application that produces evidence, in the form of authorization proofs, that a remote server should grant access to certain resources. As such, you will implement a theorem prover for the constructive authorization logic that we have discussed in lecture. However, your goal is not to implement a theorem prover that can prove *any* valid formula, but rather a limited set of formulas that make use of three authorization policies. To help you get started with this, a set of *tactics*, or modular techniques for making progress on finding proofs, are provided for you to work with and draw ideas from.
+
+Having implemented the client, you will turn your attention to the authorization server, whose source is included in this repository. It contains a vulnerability, having to do with the way that it authenticates evidence sent by the client, that allows anyone to (erroneously) convince it that they should be granted access to *any* resource of their choice. You will identify the vulnerability, and demonstrate your understanding of it by implementing an exploit that causes the server to send you a credential to a forbidden resource.
+
 ### Contents
 
 * [Getting Started](#getting-started)
