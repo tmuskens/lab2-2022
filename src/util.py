@@ -390,14 +390,21 @@ def horizontal_concat(ss: list[str], lead=0, sep_width=2) -> str:
     return '\n'.join(catteds)
 
 def ps_helper(
-    pf: Proof, 
-    lead=0, 
-    sep_width=2, 
-    pf_width=80, 
-    sub_index='T', 
+    pf: Proof,
+    lead=0,
+    sep_width=2,
+    pf_width=80,
+    sub_index='T',
     overflow={},
-    trunc_context=False
+    trunc_context=False,
+    depth=None
 ) -> str:
+
+    if depth is not None and depth <= 0:
+        return "...", {}
+    else:
+        if depth is not None:
+            depth -= 1
 
     if isinstance(pf, Sequent):
         return sequent_stringify(pf, max_line=pf_width, trunc_context=trunc_context), {}
@@ -413,7 +420,8 @@ def ps_helper(
                 pf_width=pf_width,
                 sub_index=f'{sub_index}.{i}',
                 overflow=overflow,
-                trunc_context=trunc_context
+                trunc_context=trunc_context,
+                depth=depth
             ) for i, p in enumerate(pf.premises)
         ]
         for sub in subs:
@@ -438,14 +446,16 @@ def ps_helper(
     main_proof = f'{branches}\n{pf.rule.name} {"-"*(width-rule_width)}\n{{:^{width}}}'.format(root)
     return main_proof, overflow
 
-def proof_stringify(pf: Proof, sep_width=2, pf_width=80, trunc_context=False) -> str:
+
+def proof_stringify(pf: Proof, sep_width=2, pf_width=80, trunc_context=False, depth=None) -> str:
     s, overflow = ps_helper(
         pf,
         lead=0,
         sep_width=sep_width,
         pf_width=pf_width,
         sub_index='T',
-        trunc_context=trunc_context
+        trunc_context=trunc_context,
+        depth=depth
     )
     if len(overflow) > 0:
         extras = '\n\n'.join(f'Proof {k}:\n{horizontal_concat([overflow[k]])}' for k in reversed(overflow))
@@ -453,7 +463,8 @@ def proof_stringify(pf: Proof, sep_width=2, pf_width=80, trunc_context=False) ->
     else:
         return horizontal_concat([s])
 
-def stringify(o, pf_width=80, seq_width=None, trunc_context=False):
+
+def stringify(o, pf_width=80, seq_width=None, trunc_context=False, pf_depth=None) -> str:
     if isinstance(o, Formula):
         return fmla_stringify(o)
     elif isinstance(o, Judgement):
@@ -465,6 +476,6 @@ def stringify(o, pf_width=80, seq_width=None, trunc_context=False):
     elif isinstance(o, Rule):
         return rule_stringify(o)
     elif isinstance(o, Proof):
-        return proof_stringify(o, pf_width=pf_width, trunc_context=trunc_context)
+        return proof_stringify(o, pf_width=pf_width, trunc_context=trunc_context, depth=pf_depth)
     else:
         return fmla_stringify(o)
