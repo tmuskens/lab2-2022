@@ -120,8 +120,11 @@ class Credential():
 		with open(path, 'r') as f:
 			return Credential.from_json(f.read())
 
-	def verify_signature(self) -> bool:
-		key = Certificate.load_certificate(self.signator).public_key
+	def verify_signature(self, pk: Key=None) -> bool:
+		if pk is None:
+			key = Certificate.load_certificate(self.signator).public_key
+		else:
+			key = pk
 		try:
 			key.verify(
 				bytes.fromhex(self.signature),
