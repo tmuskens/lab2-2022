@@ -4,6 +4,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import itertools
 import random
+from typing import Optional
 
 from logic import *
 from util import *
@@ -59,6 +60,71 @@ class InstantiateForallTactic(Tactic):
                     # Add the proof to the return set.
                     pfs |= set([Proof([Sequent(new_gamma, seq.delta)], seq, which_rule)])
         return pfs
+
+class CertTactic(Tactic):
+    def __init__(self, a1: Agent, k1: Key, a2: Agent, k2: Key):
+        self._ag = a1
+        self._ca = a2
+
+        self._key = k1
+        self._cak = k2
+        
+        # _says is a requirement
+        self._iskey = App(Operator.ISKEY, 2, [self._ag, self._key])
+        self._says = App(Operator.SAYS, 2, [self._ca, self._iskey])
+        
+        # _isCA associates CA with CA key
+        self._isCA = App(Operator.ISCA, 1, [self._ca])
+        
+        # _says and _isCA need to be present in the sequent to
+        # apply this tactic
+        self._reqs = [
+            Proposition(self._says),
+            Proposition(self._isCA)
+        ]
+
+    def apply(self, seq: Sequent) -> set[Proof]:
+        print("CERT TACTIC")
+        # print(stringify(self._isCA))
+        # print(stringify(self._says))
+        # print(stringify(seq))
+        
+        # make sure all of the required assumptions are present
+        # for p in seq.gamma: print(stringify(p))
+        if not all(p in seq.gamma for p in self._reqs):
+            return set([])
+
+        # if the `isKey` formula is already in the sequent's
+        # assumptions, then there is no need to introduce it
+        # again
+        if Proposition(self._iskey) in seq.gamma:
+            return set([])
+        # cutgoal is the formula that we want to prove in the
+        # left premise of the `cut` appliction
+        cutgoal = Sequent(seq.gamma, Proposition(self._iskey))
+
+        # `Cert` requires proving `_isCA` and `_says`
+        # We already checked that these are in the context,
+        # so if we've gotten this far then we know that both
+        # are proved with one application of the identity rule
+        pf_isCA = get_one_proof(Sequent(seq.gamma, Proposition(self._isCA)), RuleTactic(identityRule))
+        pf_says = get_one_proof(Sequent(seq.gamma, Proposition(self._says)), RuleTactic(identityRule))
+        # The left premise of the cut is proved by combining these proofs
+        # using the `Cert` rule
+        pf_cutgoal = Proof([pf_isCA, pf_says], cutgoal, certRule)
+        # The right premise of the cut will copy the assumptions
+        # in the current sequent, and add _says
+        new_gamma = (
+            seq.gamma + 
+            [Proposition(self._iskey)]
+        )
+        newgoal = Sequent(new_gamma, seq.delta)
+        # We need to look at the delta (proof goal) of the given sequent
+        # to determine whether to use the version of `cut` for truth
+        # or affirmation judgements
+        whichRule = cutRule if isinstance(seq.delta, Proposition) else affCutRule
+        # Now put everything together and return the proof
+        return set([Proof([pf_cutgoal, newgoal], seq, whichRule)])
 
 class SignTactic(Tactic):
 
@@ -127,9 +193,17 @@ cut -------------------------------------------------
         ]
 
     def apply(self, seq: Sequent) -> set[Proof]:
+        print("SIGN TACTIC")
+        print(stringify(self._iskey))
+        print(stringify(self._cred))
+        print(stringify(self._says))
+        for p in seq.gamma: print(stringify(p))
+
         # make sure all of the required assumptions are present
         if not all(p in seq.gamma for p in self._reqs):
             return set([])
+        
+        print("where we at?")
         # if the `says` formula is already in the sequent's
         # assumptions, then there is no need to introduce it
         # again
@@ -153,6 +227,7 @@ cut -------------------------------------------------
             seq.gamma + 
             [Proposition(self._says)]
         )
+
         newgoal = Sequent(new_gamma, seq.delta)
         # We need to look at the delta (proof goal) of the given sequent
         # to determine whether to use the version of `cut` for truth
@@ -374,6 +449,24 @@ def chain(pf: Proof, chains: dict[Sequent, Proof]) -> Proof:
             new_prems.append(prem)
     return Proof(new_prems, pf.conclusion, pf.rule)
 
+def proof1(seq: Sequent) -> Optional[Proof]:
+    print("Proof 1 \n")
+    t = ThenTactic([
+        SignTactic(parse('sign(iskey(#root, [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40])'), Agent('#ca')),
+        CertTactic(Agent('#root'), Key('[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]'), Agent('#ca'), Key('[68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]')),
+        SignTactic(parse('sign((open(#tmuskens, <tmuskens.txt>)), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])'), Agent('#root')),
+        RuleTactic(identityRule)
+    ])
+    proof = get_one_proof(seq, t)
+    #get one proof function with chain tactics
+    return proof
+
+def proof2(seq: Sequent) -> Optional[Proof]:
+    return None
+
+def proof3(seq: Sequent) -> Optional[Proof]:
+    return None
+
 def get_one_proof(seq: Sequent, t: Tactic) -> Optional[Proof]:
     """
     Convenience function to look for a closed proof
@@ -410,6 +503,21 @@ def prove(seq: Sequent) -> Optional[Proof]:
         Optional[Proof]: A closed proof of `seq`, if
             one exists. Otherwise `None`.
     """
+    print("PROOF\n")
+    print(stringify(seq))
+    res = resources(seq.delta)
+    elem = res.pop()
+    print(elem.id)
+    if (elem.id == "<tmuskens.txt>"):
+        print("proof1\n")
+        return proof1(seq)
+    elif (elem.id == "<shared.txt>"):
+        print("proof2\n")
+        return proof2(seq)
+    elif (elem.id == "<secret.txt>"):
+        print("proof3\n")
+        return proof3(seq)
+    print("no proof\n")
     return None
 
 if __name__ == '__main__':
@@ -422,3 +530,8 @@ if __name__ == '__main__':
             print(f'passed test {i}')
         else:
             print(f'failed test {i}')
+
+
+#isKey tactic (sign -> iskey)
+
+#delegatetactic

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import itertools
+from typing import Optional
 
 from logic import *
 from parser import parse
