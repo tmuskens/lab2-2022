@@ -33,6 +33,12 @@ class InstantiateForallTactic(Tactic):
         self.grounds = grounds
 
     def apply(self, seq: Sequent) -> set[Proof]:
+        print("INSTANTIATE FOR ALL")
+        for p in seq.gamma: print(stringify(p))
+        print("delta:")
+        print(stringify(seq.delta))
+        print('\n')
+        # print(self.grounds)
         pfs = set([])
         # seq is p1, ..., pn |- delta
         for p in seq.gamma:
@@ -194,16 +200,18 @@ cut -------------------------------------------------
 
     def apply(self, seq: Sequent) -> set[Proof]:
         print("SIGN TACTIC")
-        print(stringify(self._iskey))
-        print(stringify(self._cred))
-        print(stringify(self._says))
+        # print(stringify(self._iskey))
+        # print(stringify(self._cred))
+        # print(stringify(self._says))
         for p in seq.gamma: print(stringify(p))
+        print("delta:")
+        print(stringify(seq.delta))
+        print("\n")
 
         # make sure all of the required assumptions are present
         if not all(p in seq.gamma for p in self._reqs):
             return set([])
-        
-        print("where we at?")
+
         # if the `says` formula is already in the sequent's
         # assumptions, then there is no need to introduce it
         # again
@@ -252,9 +260,18 @@ class RuleTactic(Tactic):
         self._rule = rule
 
     def apply(self, seq: Sequent) -> set[Proof]:
+        print("RULE TACTIC: ", self._rule.name)
+        for p in seq.gamma: print(stringify(p))
+        print("delta:")
+        print(stringify(seq.delta))
+        print("\n")
         pfs = set([])
         # Attempt to unify the given sequent with the conclusion of the rule.
+        
+        # print(stringify(self._rule.conclusion))
         rhos = list(matchs_sequent(self._rule.conclusion, seq, {}))
+        # for p in rhos: print(stringify(p))
+        print("\n")
         # There may be more than one substitution that unifies the
         # sequent with the rule, i.e., more than one opportunity to
         # apply the rule to this sequent. This tactic will generate
@@ -410,6 +427,81 @@ class OrElseTactic(Tactic):
                 return t_pfs
         return set([])
 
+class IsKeyTactic(Tactic):
+    def __init__(self, agent: Agent, key: Key):
+        self._key = key
+        self._agent = agent
+        self._caKey = "[68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]"
+        self._ca = "#ca"
+    
+    def apply(self, seq: Sequent) -> set[Proof]:
+        cred = f'sign(iskey({self._agent}, {self._key}), {self._caKey})'
+        t = ThenTactic([ 
+            SignTactic(parse(cred), Agent(self._ca)),
+            CertTactic(Agent(self._agent), Key(self._key), Agent(self._ca), Key(self._caKey)),
+        ]).apply(seq)
+        
+        return t
+
+class DelegatePrelimTactic(Tactic):
+    def __init__(self, agent1: Agent, agent2: Agent, agent1key: Key, rootkey: Key, 
+                 resource: Resource):
+        self._ag1 = agent1
+        self._ag1key = agent1key
+        self._rootk = rootkey
+        self._ag2 = agent2
+        self._res = resource
+    
+    def apply(self, seq: Sequent) -> set[Proof]:
+        cred0 = f'sign((open({self._ag2}, <secret.txt>)), {self._ag1key})'
+        cred = f'sign(((@A . ((@R . ((open(A, R) -> (@B . (((A says open(B, R)) -> open(B, R)))))))))), {self._rootk})'
+        t = ThenTactic([
+            SignTactic(parse(cred0), Agent(self._ag1)),
+            SignTactic(parse(cred), Agent("#root")),
+            RuleTactic(saysLeftRule),
+            InstantiateForallTactic([Agent(self._ag1)]),
+            InstantiateForallTactic([Resource(self._res)])
+        ]).apply(seq)
+        return t
+
+
+class DelegateTactic(Tactic):
+    def __init__(self, agent1: Agent, agent2: Agent, resource: Resource):
+        self._ag1 = agent1
+        self._ag2 = agent2
+        self._res = resource
+
+    def apply(self, seq: Sequent) -> set[Proof]:
+        print("DELEGATE TACTIC \n")
+        # goal = f'open({self._ag2}, {self._res}) true'
+        goal = App(Operator.OPEN, 2, [Agent(self._ag2), Resource(self._res)])
+        # cutgoal is the formula that we want to prove in the
+        # left premise of the `cut` appliction
+        # cutgoal = Sequent(seq.gamma, Proposition(goal))
+        print(goal)
+        proof = get_one_proof(Sequent(seq.gamma, Proposition(goal)),
+                              ThenTactic([
+                                RuleTactic(impLeftRule),
+                                RuleTactic(identityRule),
+                                InstantiateForallTactic([Agent(self._ag2)]),
+                                RuleTactic(impLeftRule),
+                                RuleTactic(identityRule),
+                                RuleTactic(affRule),
+                                RuleTactic(identityRule),
+                              ]))
+        if (proof == None):
+            print("NONE PROOF")
+        else: print("PROOF SUCCESS")
+        new_gamma = (
+            seq.gamma + 
+            [Proposition(goal)]
+        )
+        print("\n", stringify(seq.delta), "\n")
+        new_goal = Sequent(new_gamma, seq.delta)
+
+        return set([Proof([proof, new_goal], seq, affCutRule)])
+
+
 def chain(pf: Proof, chains: dict[Sequent, Proof]) -> Proof:
     """
     Chain proofs for unclosed branches of a proof into
@@ -449,11 +541,11 @@ def chain(pf: Proof, chains: dict[Sequent, Proof]) -> Proof:
             new_prems.append(prem)
     return Proof(new_prems, pf.conclusion, pf.rule)
 
+
 def proof1(seq: Sequent) -> Optional[Proof]:
     print("Proof 1 \n")
     t = ThenTactic([
-        SignTactic(parse('sign(iskey(#root, [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]), [68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40])'), Agent('#ca')),
-        CertTactic(Agent('#root'), Key('[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]'), Agent('#ca'), Key('[68:d7:6c:b7:95:fb:a4:f7:a7:4f:12:44:6f:27:c5:40]')),
+        IsKeyTactic("#root", "[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]"),
         SignTactic(parse('sign((open(#tmuskens, <tmuskens.txt>)), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])'), Agent('#root')),
         RuleTactic(identityRule)
     ])
@@ -462,10 +554,47 @@ def proof1(seq: Sequent) -> Optional[Proof]:
     return proof
 
 def proof2(seq: Sequent) -> Optional[Proof]:
-    return None
+    print("Proof 2 \n")
+    t1 = ThenTactic([
+        IsKeyTactic("#root", "[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]"),
+        IsKeyTactic("#mfredrik", "[2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf]"),
+        SignTactic(parse('sign(((@A . (((#mfredrik says open(A, <shared.txt>)) -> open(A, <shared.txt>))))), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])'), Agent('#root')),
+        RuleTactic(saysRightRule),
+        RuleTactic(saysLeftRule),
+        InstantiateForallTactic([Agent('#tmuskens')]),
+        RuleTactic(affRule),
+        RuleTactic(impLeftRule),
+        SignTactic(parse('sign((open(#tmuskens, <shared.txt>)), [2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf])'), Agent('#mfredrik')),
+        RuleTactic(identityRule)
+    ])
+    proof = get_one_proof(seq, t1)
+    #get one proof function with chain tactics
+    return proof
 
 def proof3(seq: Sequent) -> Optional[Proof]:
-    return None
+    t1 = ThenTactic([
+        IsKeyTactic("#root", "[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]"),
+        IsKeyTactic("#mfredrik", "[2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf]"),
+        IsKeyTactic("#aditi", '[38:24:c8:d0:bc:d5:e6:31:7b:91:97:0f:82:b0:4e:72]'),
+        IsKeyTactic("#jack", "[98:50:c6:80:ae:eb:1e:46:bf:a8:67:61:03:83:bc:56]"),
+        IsKeyTactic("#nuno", "[33:37:30:b5:9c:82:c6:0a:44:e9:06:8c:59:cd:f7:dc]"),
+        SignTactic(parse('sign((open(#mfredrik, <secret.txt>)), [88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22])'), Agent('#root')),
+        RuleTactic(saysRightRule),
+        RuleTactic(saysLeftRule),
+        DelegatePrelimTactic('#mfredrik', '#aditi', '[2c:e6:6b:45:6f:cc:d7:b9:e9:bf:2b:a1:ec:62:8e:cf]', '[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]', "<secret.txt>"),
+        DelegateTactic('#mfredrik', '#aditi', "<secret.txt>"),
+        DelegatePrelimTactic('#aditi', '#jack', '[38:24:c8:d0:bc:d5:e6:31:7b:91:97:0f:82:b0:4e:72]', '[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]', "<secret.txt>"),
+        DelegateTactic('#aditi', '#jack', "<secret.txt>"),
+        DelegatePrelimTactic('#jack', '#nuno', '[98:50:c6:80:ae:eb:1e:46:bf:a8:67:61:03:83:bc:56]', '[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]', "<secret.txt>"),
+        DelegateTactic('#jack', '#nuno', "<secret.txt>"),
+        DelegatePrelimTactic('#nuno', '#tmuskens', '[33:37:30:b5:9c:82:c6:0a:44:e9:06:8c:59:cd:f7:dc]','[88:02:3f:fb:03:0f:c8:54:dc:75:f0:8e:cc:c3:54:22]', "<secret.txt>"),
+        DelegateTactic('#nuno', '#tmuskens', "<secret.txt>"),
+        RuleTactic(affRule),
+        RuleTactic(identityRule)
+    ])
+    proof = get_one_proof(seq, t1)
+    #get one proof function with chain tactics
+    return proof
 
 def get_one_proof(seq: Sequent, t: Tactic) -> Optional[Proof]:
     """
@@ -504,7 +633,7 @@ def prove(seq: Sequent) -> Optional[Proof]:
             one exists. Otherwise `None`.
     """
     print("PROOF\n")
-    print(stringify(seq))
+    # print(stringify(seq))
     res = resources(seq.delta)
     elem = res.pop()
     print(elem.id)
