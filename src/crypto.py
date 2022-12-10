@@ -26,7 +26,7 @@ from logic import *
 from verifier import verify
 from proofrules import calculus
 from parser import parse, sequent_parse
-from util import stringify
+from util import get_cas, stringify
 
 @dataclass(eq=True, frozen=True)
 class Credential():

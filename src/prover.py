@@ -34,10 +34,10 @@ class InstantiateForallTactic(Tactic):
 
     def apply(self, seq: Sequent) -> set[Proof]:
         print("INSTANTIATE FOR ALL")
-        for p in seq.gamma: print(stringify(p))
-        print("delta:")
-        print(stringify(seq.delta))
-        print('\n')
+        # for p in seq.gamma: print(stringify(p))
+        # print("delta:")
+        # print(stringify(seq.delta))
+        # print('\n')
         # print(self.grounds)
         pfs = set([])
         # seq is p1, ..., pn |- delta
@@ -203,10 +203,11 @@ cut -------------------------------------------------
         # print(stringify(self._iskey))
         # print(stringify(self._cred))
         # print(stringify(self._says))
-        for p in seq.gamma: print(stringify(p))
-        print("delta:")
-        print(stringify(seq.delta))
-        print("\n")
+        # print('gamma')
+        # for p in seq.gamma: print(stringify(p))
+        # print("delta:")
+        # print(stringify(seq.delta))
+        # print("\n")
 
         # make sure all of the required assumptions are present
         if not all(p in seq.gamma for p in self._reqs):
@@ -235,7 +236,9 @@ cut -------------------------------------------------
             seq.gamma + 
             [Proposition(self._says)]
         )
-
+        # print("NEW GAMMA")
+        # for p in new_gamma: print(stringify(p))
+        # print("\n")
         newgoal = Sequent(new_gamma, seq.delta)
         # We need to look at the delta (proof goal) of the given sequent
         # to determine whether to use the version of `cut` for truth
@@ -260,18 +263,18 @@ class RuleTactic(Tactic):
         self._rule = rule
 
     def apply(self, seq: Sequent) -> set[Proof]:
-        print("RULE TACTIC: ", self._rule.name)
-        for p in seq.gamma: print(stringify(p))
-        print("delta:")
-        print(stringify(seq.delta))
-        print("\n")
+        print("RULE TACTIC:", self._rule.name)
+        # for p in seq.gamma: print(stringify(p))
+        # print("delta:")
+        # print(stringify(seq.delta))
+        # print("\n")
         pfs = set([])
         # Attempt to unify the given sequent with the conclusion of the rule.
         
         # print(stringify(self._rule.conclusion))
         rhos = list(matchs_sequent(self._rule.conclusion, seq, {}))
         # for p in rhos: print(stringify(p))
-        print("\n")
+        # print("\n")
         # There may be more than one substitution that unifies the
         # sequent with the rule, i.e., more than one opportunity to
         # apply the rule to this sequent. This tactic will generate
@@ -472,13 +475,13 @@ class DelegateTactic(Tactic):
         self._res = resource
 
     def apply(self, seq: Sequent) -> set[Proof]:
-        print("DELEGATE TACTIC \n")
+        print("DELEGATE TACTIC")
         # goal = f'open({self._ag2}, {self._res}) true'
         goal = App(Operator.OPEN, 2, [Agent(self._ag2), Resource(self._res)])
         # cutgoal is the formula that we want to prove in the
         # left premise of the `cut` appliction
         # cutgoal = Sequent(seq.gamma, Proposition(goal))
-        print(goal)
+        # print(goal)
         proof = get_one_proof(Sequent(seq.gamma, Proposition(goal)),
                               ThenTactic([
                                 RuleTactic(impLeftRule),
@@ -489,14 +492,13 @@ class DelegateTactic(Tactic):
                                 RuleTactic(affRule),
                                 RuleTactic(identityRule),
                               ]))
-        if (proof == None):
-            print("NONE PROOF")
-        else: print("PROOF SUCCESS")
+        # if (proof == None):
+        #     print("NONE PROOF")
+        # else: print("PROOF SUCCESS")
         new_gamma = (
             seq.gamma + 
             [Proposition(goal)]
         )
-        print("\n", stringify(seq.delta), "\n")
         new_goal = Sequent(new_gamma, seq.delta)
 
         return set([Proof([proof, new_goal], seq, affCutRule)])
@@ -593,6 +595,20 @@ def proof3(seq: Sequent) -> Optional[Proof]:
         RuleTactic(identityRule)
     ])
     proof = get_one_proof(seq, t1)
+    print(stringify(proof))
+    #get one proof function with chain tactics
+    return proof
+
+def proof4(seq: Sequent, ca_key: str) -> Optional[Proof]:
+    print("Proof 4\n")
+    cred1 = f'sign(iskey(#root, [93:32:66:16:dc:a3:50:e1:fe:8d:76:ec:dd:87:76:08]), {ca_key})'
+    t = ThenTactic([
+        SignTactic(parse(cred1), Agent("#fake_ca")),
+        CertTactic(Agent("#root"), Key("[93:32:66:16:dc:a3:50:e1:fe:8d:76:ec:dd:87:76:08]"), Agent("#fake_ca"), Key(ca_key)),
+        SignTactic(parse('sign((open(#tmuskens, <bigsecret.txt>)), [93:32:66:16:dc:a3:50:e1:fe:8d:76:ec:dd:87:76:08])'), Agent('#root')),
+        RuleTactic(identityRule)
+    ])
+    proof = get_one_proof(seq, t)
     #get one proof function with chain tactics
     return proof
 
@@ -646,7 +662,9 @@ def prove(seq: Sequent) -> Optional[Proof]:
     elif (elem.id == "<secret.txt>"):
         print("proof3\n")
         return proof3(seq)
-    print("no proof\n")
+    elif (elem.id == "<bigsecret.txt>"):
+        print("proof4\n")
+        return proof4(seq)
     return None
 
 if __name__ == '__main__':
